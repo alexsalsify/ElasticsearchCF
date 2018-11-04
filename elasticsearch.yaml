@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Launches an ElasticSearch instance in EC2, provisioned to use SSL and configured to use file-based Auth
+Parameters:
+  KeyName:
+    Description: "Name of an existing EC2 KeyPair to enable SSH access to the instance"
+    Type: "AWS::EC2::KeyPair::KeyName"
+    ConstraintDescription: "Must be the name of an existing EC2 KeyPair"
+  VPCid:
+    Description: "VPCid for the creation of the stack"
+    Type: "AWS::EC2::VPC::Id"
+    ConstraintDescription: ""
+  Subnet:
+    Description: "Subnet to launch EC2 instance too"
+    Type: "AWS::EC2::Subnet::Id"
+    ConstraintDescription: ""
+  Password:
+    Description: "Enter Admin user password. Note: this password will be used in cert generation as well."
+    Type: String
+Resources:
+  InstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      Tags:
+        -
+          Key: "purpose"
+          Value: "ElasticSearch"
+      VpcId: !Ref VPCid
+      GroupDescription: "Enable SSH, HTTPS, and port 9200 access"
+      SecurityGroupIngress:
+      -
+        CidrIp: "0.0.0.0/0"
+        Description: "Allowed from anywhere"
+        FromPort: "22"
+        ToPort: "22"
+        IpProtocol: "tcp"
+      -
+        CidrIp: "0.0.0.0/0"
+        Description: "Allowed from anywhere"
+        FromPort: "443"
+        ToPort: "443"
+        IpProtocol: "tcp"
+      -
+        CidrIp: "0.0.0.0/0"
+        Description: "Allowed from anywhere"
+        FromPort: "9200"
+        ToPort: "9200"
+        IpProtocol: "tcp"
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          InstallandConfigure:
+            - Install
+            - StartES
+            - Config
+        Install:
+          packages:
+            yum:
+              java-1.8.0-openjdk.x86_64: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+                runas=root
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/yum.repos.d/elasticsearch.repo:
+              content: |
+                [elasticsearch-6.x]
+                name=Elasticsearch repository for 6.x packages
+                baseurl=https://artifacts.elastic.co/packages/6.x/yum
+                gpgcheck=1
+                gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+                enabled=1
+                autorefresh=1
+                type=rpm-md
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            esPubKey:
+              command: 'sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch'
+            elasticsearch:
+              command: 'sudo yum -y install elasticsearch'
+            Java8Update:
+              command: 'sudo /usr/sbin/alternatives --set java /usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin/java'
+            Java7Remove:
+              command: 'sudo yum -y remove java7'
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+              files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        StartES:
+          files:
+            /etc/elasticsearch/jvm.options:
+              content: |
+                ## JVM configuration
+
+                ################################################################
+                ## IMPORTANT: JVM heap size
+                ################################################################
+                ##
+                ## You should always set the min and max JVM heap
+                ## size to the same value. For example, to set
+                ## the heap to 4 GB, set:
+                ##
+                ## -Xms4g
+                ## -Xmx4g
+                ##
+                ## See https://www.elastic.co/guide/en/elasticsearch/reference/current/heap-size.html
+                ## for more information
+                ##
+                ################################################################
+
+                # Xms represents the initial size of total heap space
+                # Xmx represents the maximum size of total heap space
+
+                -Xms512m
+                -Xmx512m
+
+                ################################################################
+                ## Expert settings
+                ################################################################
+                ##
+                ## All settings below this section are considered
+                ## expert settings. Don't tamper with them unless
+                ## you understand what you are doing
+                ##
+                ################################################################
+
+                ## GC configuration
+                -XX:+UseConcMarkSweepGC
+                -XX:CMSInitiatingOccupancyFraction=75
+                -XX:+UseCMSInitiatingOccupancyOnly
+
+                ## optimizations
+
+                # pre-touch memory pages used by the JVM during initialization
+                -XX:+AlwaysPreTouch
+
+                ## basic
+
+                # force the server VM (remove on 32-bit client JVMs)
+                -server
+
+                # explicitly set the stack size (reduce to 320k on 32-bit client JVMs)
+                -Xss1m
+
+                # set to headless, just in case
+                -Djava.awt.headless=true
+
+                # ensure UTF-8 encoding by default (e.g. filenames)
+                -Dfile.encoding=UTF-8
+
+                # use our provided JNA always versus the system one
+                -Djna.nosys=true
+
+                # use old-style file permissions on JDK9
+                -Djdk.io.permissionsUseCanonicalPath=true
+
+                # flags to configure Netty
+                -Dio.netty.noUnsafe=true
+                -Dio.netty.noKeySetOptimization=true
+                -Dio.netty.recycler.maxCapacityPerThread=0
+
+                # log4j 2
+                -Dlog4j.shutdownHookEnabled=false
+                -Dlog4j2.disable.jmx=true
+                -Dlog4j.skipJansi=true
+
+                ## heap dumps
+
+                # generate a heap dump when an allocation from the Java heap fails
+                # heap dumps are created in the working directory of the JVM
+                -XX:+HeapDumpOnOutOfMemoryError
+
+                # specify an alternative path for heap dumps
+                # ensure the directory exists and has sufficient space
+                #-XX:HeapDumpPath=${heap.dump.path}
+
+                ## GC logging
+
+                #-XX:+PrintGCDetails
+                #-XX:+PrintGCTimeStamps
+                #-XX:+PrintGCDateStamps
+                #-XX:+PrintClassHistogram
+                #-XX:+PrintTenuringDistribution
+                #-XX:+PrintGCApplicationStoppedTime
+
+                # log GC status to a file with time stamps
+                # ensure the directory exists
+                #-Xloggc:${loggc}
+
+                # By default, the GC log file will not rotate.
+                # By uncommenting the lines below, the GC log file
+                # will be rotated every 128MB at most 32 times.
+                #-XX:+UseGCLogFileRotation
+                #-XX:NumberOfGCLogFiles=32
+                #-XX:GCLogFileSize=128M
+
+                # Elasticsearch 5.0.0 will throw an exception on unquoted field names in JSON.
+                # If documents were already indexed with unquoted fields in a previous version
+                # of Elasticsearch, some operations may throw errors.
+                #
+                # WARNING: This option will be removed in Elasticsearch 6.0.0 and is provided
+                # only for migration purposes.
+                #-Delasticsearch.json.allow_unquoted_field_names=true
+          services:
+            sysvinit:
+              elasticsearch:
+                enabled: "true"
+                ensureRunning: "true"
+        Config:
+          files:
+            /etc/elasticsearch/elasticsearch.yml:
+              content: |
+                xpack.security.enabled: true
+                xpack.security.transport.ssl.enabled: true
+                xpack.security.transport.ssl.verification_mode: none
+                xpack.security.transport.ssl.keystore.path: elastic.p12
+                xpack.security.transport.ssl.truststore.path: elastic.p12
+                xpack.ssl.verification_mode: none
+                xpack.ssl.client_authentication: none
+                xpack.security.http.ssl.enabled: true
+                xpack.security.http.ssl.keystore.path: elastic.p12
+                xpack.security.http.ssl.truststore.path: elastic.p12
+                xpack:
+                  security:
+                    authc:
+                      realms:
+                        file1:
+                          type: file
+                          order: 0
+                network.host: 0.0.0.0
+                path.data: /var/lib/elasticsearch
+                path.logs: /var/log/elasticsearch
+              mode: '000660'
+              owner: root
+              group: elasticsearch
+            /etc/elasticsearch/roles.yml:
+              content: |
+                admins:
+                  cluster:
+                    - all
+                  indices:
+                    - names:
+                        - "*"
+                      privileges:
+                        - all
+              mode: '000660'
+              owner: root
+              group: elasticsearch
+          commands:
+            01-StartXpackTrial:
+              command: 'curl -X POST "localhost:9200/_xpack/license/start_trial?acknowledge=true"'
+    Properties:
+      ImageId: "ami-0b59bfac6be064b78"
+      InstanceType: "t2.micro"
+      SecurityGroupIds:
+          -
+              !GetAtt InstanceSecurityGroup.GroupId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref Subnet
+      Tags:
+          -
+              Key: "purpose"
+              Value: "ElasticSearch"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          exec &> /var/log/UserData.txt
+          yum update -y aws-cfn-bootstrap
+          ulimit -u 4096
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --configsets InstallandConfigure --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+          /usr/share/elasticsearch/bin/elasticsearch-certutil ca --out /usr/share/elasticsearch/elastic-stack-ca.p12 --pass ${Password}
+          /usr/share/elasticsearch/bin/elasticsearch-certutil cert --ca /usr/share/elasticsearch/elastic-stack-ca.p12 --out /etc/elasticsearch/elastic.p12 --pass ${Password} --ca-pass ${Password}
+          chown root:elasticsearch /etc/elasticsearch/elastic.p12
+          chmod 660 /etc/elasticsearch/elastic.p12
+          echo ${Password} | /usr/share/elasticsearch/bin/elasticsearch-keystore add --stdin xpack.security.transport.ssl.keystore.secure_password
+          echo ${Password} | /usr/share/elasticsearch/bin/elasticsearch-keystore add --stdin xpack.security.transport.ssl.truststore.secure_password
+          echo ${Password} | /usr/share/elasticsearch/bin/elasticsearch-keystore add --stdin xpack.security.http.ssl.keystore.secure_password
+          echo ${Password} | /usr/share/elasticsearch/bin/elasticsearch-keystore add --stdin xpack.security.http.ssl.truststore.secure_password
+          /usr/share/elasticsearch/bin/elasticsearch-users useradd admin -p ${Password} -r admins
+          service elasticsearch restart
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+Outputs:
+  FirstEC2InstanceId:
+    Description: "Instance Id of first EC2 Instance"
+    Value: !Ref EC2Instance
+  InstancePublicIP:
+    Description: "PublicIP of EC2 instance"
+    Value: !GetAtt EC2Instance.PublicIp
