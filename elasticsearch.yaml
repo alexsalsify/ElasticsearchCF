@@ -92,13 +92,13 @@ Resources:
               owner: root
               group: root
           commands:
-            esPubKey:
+            01-esPubKey:
               command: 'sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch'
-            elasticsearch:
+            02-elasticsearch:
               command: 'sudo yum -y install elasticsearch'
-            Java8Update:
+            03-Java8Update:
               command: 'sudo /usr/sbin/alternatives --set java /usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin/java'
-            Java7Remove:
+            04-Java7Remove:
               command: 'sudo yum -y remove java7'
           services:
             sysvinit:
