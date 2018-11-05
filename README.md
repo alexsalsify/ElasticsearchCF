@@ -42,7 +42,7 @@ x-pack to provide ElasticSearch security, including SSL and user based authentic
 
 Design Details
 
-How did you choose to automate the provisioning and bootstrapping of the instance?  Why?
+- How did you choose to automate the provisioning and bootstrapping of the instance?  Why?
 
 As detailed above I decided to use CloudFormation to automate the provisioning of the AWS resources and to bootstrap the instance with the installation and configuration of ElasticSearch and x-pack. I choose CloudFormation based mostly on its ease of use and connectivity into pretty much every AWS service. I thought about using OpsWorks to handle the bootstrapping phase of this solution but after delving into things a bit more I came to the conclusion that it was simply just an extra layer of complexity on what is, relatively, a simple task. I wanted to be able to focus on answering the requirements as best as I could without getting to off track and down a rabbit hole with a technology i’m not completely familiar with.
 
@@ -54,7 +54,7 @@ The requirements for this exercise asked for two things specific to security on 
 
 I think CloudWatch is a decent starting point for monitoring this as a stand-alone test environment. The problem with CloudWatch is it doesn’t monitor all of the metrics that we would want to see when keeping an eye on an ElasticSearch installation. The basic CloudWatch metrics only allow us to see CPU utilization, Disk usage and disk I/O, and network usage and I/O. Obviously, with something like ElasticSearch we would also want to be able to view memory utilization and service status for ElasticSearch. If I were to add monitoring to this environment I’d either create a custom plugin to poll those metrics on the EC2 host or use a third-party service to integrate into this solution to capture the metrics and provide them into a centralized monitoring platform.
 
-Could you extend your solution to launch a secure cluster of ElasticSearch nodes?  What would need to change to support this use case?
+- Could you extend your solution to launch a secure cluster of ElasticSearch nodes?  What would need to change to support this use case?
 
 I’m fairly confident this solution could be scaled out to support a clustered installation of ElasticSearch. Now, I would not say that this solution would provide a truly “secured” cluster environment of ElasticSearch without some fairly drastic overhaul to the security requirements. To get this to work we’d need to do a couple things to the ElasticSearch installation and to the CloudFormation template. First, we’d need to configure the CloudFormation template to launch this ElasticSearch EC2 instance into an auto-scaling group with a maximum and minimum size set to the number of nodes needed within the cluster. We’d also need to include a couple of different items as part of the auto-scaling group template. We’d need to add a launch configuration based on the EC2 instance we originally deploy as a part of the CloudFormation Stack and include the user-data used to configure elasticsearch on that EC2 instance. Now, I will be honest I have no idea how that works when we use cfn-init to bootstrap that instance? I would have to do more research into whether or not that is a possible solution. Either way, if that IS possible, we’d then need to ensure that the AWS EC2 cloud plugin is installed as a part of that bootstrap and then configure the ElasticSearch elasticsearch.yml file to include the AWS discovery settings so each node can see, and communicate with each other upon creation.  
 
@@ -62,11 +62,11 @@ Could you extend your solution to replace a running ElasticSearch instance with 
 
 Currently, no. I don’t see a way that you could launch this as a part of another ElasticSearch cluster and have everything go smoothly. The node might start indexing and sharding if it had the AWS EC2 cloud plugin installed and the EC2 instance was launched into the same subnet as the existing cluster with open security on the ports ElasticSearch uses to communicate with nodes but thats a lot of ifs and bad practices. A lot would need to be done to migrate indexes over to this host. For starters, at the very least, we would need to work on changing the ElasticSearch configuration to match that of the existing cluster. But to my understanding thats not even scratching the tip of a much larger iceberg that would need to be tackled. (Not to mention the security implications from launching something like this into even a staging environment)
 
-Was it a priority to make your code well structured, extensible, and reusable?
+- Was it a priority to make your code well structured, extensible, and reusable?
 
 It was one of the main reasons why I decided upon using CloudFormation. Unfortunately, due to time constraints, limitations of the exercise and a drive to meet the complete set of requirements as best as I could, the finished result didn’t turn out to be as well structured, extensible or reusable as I would of hoped. Quite a few shortcuts were made to allow this to fit within the constraints of the exercise that I don’t think would be reliably reusable or allow this to be expanded upon easily.
 
-What sacrifices did you make due to time?
+- What sacrifices did you make due to time?
 
 I took quite a few shortcuts in the configuration of ElasticSearch due to time constraints. For instance, the StartES configSet exists entirely because I need to initiate the trial version of x-pack to enable security in ElasticSearch and would not be something I would want to do in any sort of production or even a “real” development environment. I also wasn’t able to meet the extra credit ask as well. I had some fairly “cheap” ideas with how to do it initially, like simply adding three EC2 instance creations as a part of the CloudFormation Templates, but they felt sort of counter productive to the idea of this exercise and I decided to scrap them for a more complete answer to the main requirements as they were asked. I also would have like to have done more documentation on how I did everything. I’m a fairly firm believer in that build guides should be a thing and I would like to have a detailed description that breaks down the Template and explains not just what I’m doing but why I’m doing it. I personally believe theres a lot of value add to be had there.
 
