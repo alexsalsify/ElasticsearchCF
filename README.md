@@ -1,11 +1,14 @@
 Read Me
+=======
 
 Document Overview
-
+=================
+=================
 The goal of this Read Me is to provide a fundamental guide to understanding the solution as it has been designed, developed and deployed. This documents intention is to provide a clear explanation into the intended design, choices made in development of the solution and constraints and restrictions within the solution. Provided alongside this information are detailed step by step instructions on how to deploy the solution. Also contained within this document are links and resources used throughout the solutions development, and constructive feedback on how the development of this project went.
 
 Exercise Requirements
-
+=====================
+=====================
 The overall goal of this exercise is to create and write a code based deployment of an ElasticSearch service cluster to Amazon Web Services (AWS). The solution submitted should be repeatable, reusable, and secure. At a base level, the provided solution should be able to launch an AWS instance, install ElasticSearch and configure the required security parameters. The ideal solution would also include functionality to scale the ElasticSearch service of at least 3 nodes clustered together.
 
 The completed solution should also come with a README file (this document) that provides instructions to run the solution, provide a description of the solution detailing its components and the choices made for each, a list of resources consulted, and feedback on the exercise including time spent.
@@ -14,20 +17,57 @@ The overall solution can utilize any tools, frameworks, or API’s, barring of t
 
 The following constraints have been applied to this exercise as well. They are as follows:
 
-Must use AWS.
-Additional AWS services can be utilized but must be detailed in documentation.
-ElasticSearch access and communication must be secure.
-A self-signed cert is an acceptable level of for the ElasticSearch cluster.
-Utilization of the Amazon ElasticSearch Service is prohibited.
+-Must use AWS.
+-Additional AWS services can be utilized but must be detailed in documentation.
+-ElasticSearch access and communication must be secure.
+-A self-signed cert is an acceptable level of for the ElasticSearch cluster.
+-Utilization of the Amazon ElasticSearch Service is prohibited.
 
 Technical Overview
-
+==================
+==================
 Now that we have an understanding of what is being requested we can start to dissect the requirements into more manageable pieces, to design what the initial solution could be. Based on the above, we know that the solution is going to need to contain, at the very least, a few AWS technologies. To provide compute resources to the solution we could leverage AWS EC2, for networking we will could utilize AWS VPC, for storage we can utilize AWS S3 or EC2 EBS volumes, and for security we can utilize AWS IAM users and security groups. These AWS Services can provide the foundation for an ElasticSearch application to run on-top of and are a good starting point for moving forward with the design.
 
 Of course, the success of this exercise hinges upon actually getting an ElasticSearch node up and running. So to do so, were going to need to install the ElasticSearch software. ElasticSearch is provided as open source software from the company Elastic and as such we’ll be downloading the software we need directly from their repos.
 
-Design Overview
+Build Guide
+===========
+===========
+The easiest way to deploy this solution would be to utilize the AWS web GUI for CloudFormation as there are a few parameters that need to be passed to the CloudFormation Stack to be used within the template.
 
+To do so:
+
+-Log into the AWS web console
+-Navigate to CloudFormation under MangementTools
+-Select Create Stack
+-Under “Choose a Template” select “Specify an Amazon S3 template URL”
+-Paste the following link:
+  -https://s3.us-east-2.amazonaws.com/alexsalsifycode/elasticsearch.yaml
+-Select Next
+-Enter a Stackname (can be whatever you desire it to be)
+-Select a pre-existing EC2 keypair to be used with the EC2 instance to SSH into it
+-Enter in a Password to be used throughout the script.
+-Will need this later to authenticate to the ElasticSearch Node
+-Select a subnet to deploy the EC2 instance too
+-Select the VPC that will be used
+-Select Next
+-Select Next
+  -If you would like to add tags to the CloudFormation stack nows the time. We are not using any IAM roles for this or enabling monitoring/rollback functionality.
+-Review Settings and select create
+-Wait a few minutes for the Stack to finish creating the EC2 instance
+  -Because we used x-pack to secure the node there are some userdata commands that are run after cfn-init. So the Stack will come back in a ready state before we’ve finished applying the security settings and restarting the ElasticSearch Service. Just giver her a minute to do her thing.
+-Navigate to the Outputs tab of the Stack you just create and copy the InstancePublicIP value.
+-Open a new tab in your web browser and navigate to https://InstancePublicIP:9200
+-Accept the certificate
+-Log into ElasticSearch with:
+  -Username: admin
+  -Password: “Password Specified as a part of the CloudFormation Stack creation”
+
+Viola, ElasticSearch on an EC2 instance.
+
+Design Overview
+===============
+===============
 With the above technologies in mind we can begin to formulate a solution that allows us to encapsulate each of the aforementioned AWS services and provision the resources necessary to hosting the ElasticSearch application. Knowing this, the first technology that comes to mind that provides a way for us to automate the provisioning and configuration of the required AWS Services is AWS CloudFormation. AWS CloudFormation will allow for the creation of a stack based on the input of a template file that contains information as to how the resources within each AWS service should be provisioned. The templates used within CloudFormation are by nature, well structured, extensible and reusable, giving great control over what the infrastructure should be doing and for understanding what the expected outcome should be along the way. By using CloudFormation we can launch a stack that contains an EC2 instance to host ElasticSearch, allowing us to provision or utilize a pre-existing VPC and its subnets to provide networking capabilities, and ensure that the necessary security groups and their permissions are applied to the EC2 instance.
 
 With a platform selected to handle the provisioning of the resources need for ElasticSearch we still need a way to install and configure the ElasticSearch software. Well, luckily for us CloudFormation can handle that workload as well, making it an easy choice for the basis of the solution. Within the CloudFormation stack template definitions for the installation, configuration and securing process for ElasticSearch are allowed. By launching the cfn-init utility, provided by AWS under the EC2 Instance userdata properties, we can create metadata information within the EC2 instance creation that contains all of the commands, scripts, files, users, and services needed to bootstrap the ElasticSearch installation process.
@@ -41,7 +81,8 @@ cfn-init utility and appropriate metadata associated with the EC2 instance confi
 x-pack to provide ElasticSearch security, including SSL and user based authentication.
 
 Design Details
-
+==============
+==============
 - How did you choose to automate the provisioning and bootstrapping of the instance?  Why?
 
 As detailed above I decided to use CloudFormation to automate the provisioning of the AWS resources and to bootstrap the instance with the installation and configuration of ElasticSearch and x-pack. I choose CloudFormation based mostly on its ease of use and connectivity into pretty much every AWS service. I thought about using OpsWorks to handle the bootstrapping phase of this solution but after delving into things a bit more I came to the conclusion that it was simply just an extra layer of complexity on what is, relatively, a simple task. I wanted to be able to focus on answering the requirements as best as I could without getting to off track and down a rabbit hole with a technology i’m not completely familiar with.
@@ -70,68 +111,16 @@ It was one of the main reasons why I decided upon using CloudFormation. Unfortun
 
 I took quite a few shortcuts in the configuration of ElasticSearch due to time constraints. For instance, the StartES configSet exists entirely because I need to initiate the trial version of x-pack to enable security in ElasticSearch and would not be something I would want to do in any sort of production or even a “real” development environment. I also wasn’t able to meet the extra credit ask as well. I had some fairly “cheap” ideas with how to do it initially, like simply adding three EC2 instance creations as a part of the CloudFormation Templates, but they felt sort of counter productive to the idea of this exercise and I decided to scrap them for a more complete answer to the main requirements as they were asked. I also would have like to have done more documentation on how I did everything. I’m a fairly firm believer in that build guides should be a thing and I would like to have a detailed description that breaks down the Template and explains not just what I’m doing but why I’m doing it. I personally believe theres a lot of value add to be had there.
 
-Build Guide
-
-The easiest way to deploy this solution would be to utilize the AWS web GUI for CloudFormation as there are a few parameters that need to be passed to the CloudFormation Stack to be used within the template.
-
-To do so:
-
-Log into the AWS web console
-
-Navigate to CloudFormation under MangementTools
-
-Select Create Stack
-
-Under “Choose a Template” select “Specify an Amazon S3 template URL”
-
-Paste the following link:
-https://s3.us-east-2.amazonaws.com/alexsalsifycode/elasticsearch.yaml
-
-Select Next
-
-Enter a Stackname (can be whatever you desire it to be)
-
-Select a pre-existing EC2 keypair to be used with the EC2 instance to SSH into it
-
-Enter in a Password to be used throughout the script.
-
-Will need this later to authenticate to the ElasticSearch Node
-
-Select a subnet to deploy the EC2 instance too
-
-Select the VPC that will be used
-
-Select Next
-
-Select Next
-If you would like to add tags to the CloudFormation stack nows the time. We are not using any IAM roles for this or enabling monitoring/rollback functionality.
-
-Review Settings and select create
-
-Wait a few minutes for the Stack to finish creating the EC2 instance
-Because we used x-pack to secure the node there are some userdata commands that are run after cfn-init. So the Stack will come back in a ready state before we’ve finished applying the security settings and restarting the ElasticSearch Service. Just giver her a minute to do her thing.
-
-Navigate to the Outputs tab of the Stack you just create and copy the InstancePublicIP value.
-
-Open a new tab in your web browser and navigate to https://InstancePublicIP:9200
-
-Accept the certificate
-
-Log into ElasticSearch with:
-
-Username: admin
-Password: “Password Specified as a part of the CloudFormation Stack creation”
-
-Viola, ElasticSearch on an EC2 instance.
-
 Feedback
-
+========
+========
 All together I would say this was a fun exercise for me personally. I felt like the overview of the requirements for what you’re looking for were a little bit vague but in reality I can understand how that vagueness can be an avenue to open up discussion and leave things up to interpretation. Regardless, I certainly learned a lot in my time spent working on this.
 
 In total I spent about 12-16 hours working on this project give or take. I will note that a solid portion of that time was being frustrated with yaml formatting and having to read through manuals to ensure my syntax was correct.
 
 Resources
-
+=========
+=========
 https://aws.amazon.com/cloudformation/aws-cloudformation-templates/
 
 https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-init.html#aws-resource-cloudformation-init-syntax
