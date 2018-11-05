@@ -75,31 +75,53 @@ Build Guide
 The easiest way to deploy this solution would be to utilize the AWS web GUI for CloudFormation as there are a few parameters that need to be passed to the CloudFormation Stack to be used within the template.
 
 To do so:
+
 Log into the AWS web console
+
 Navigate to CloudFormation under MangementTools
+
 Select Create Stack
+
 Under “Choose a Template” select “Specify an Amazon S3 template URL”
+
 Paste the following link:
 https://s3.us-east-2.amazonaws.com/alexsalsifycode/elasticsearch.yaml
+
 Select Next
+
 Enter a Stackname (can be whatever you desire it to be)
+
 Select a pre-existing EC2 keypair to be used with the EC2 instance to SSH into it
+
 Enter in a Password to be used throughout the script.
+
 Will need this later to authenticate to the ElasticSearch Node
+
 Select a subnet to deploy the EC2 instance too
+
 Select the VPC that will be used
+
 Select Next
+
 Select Next
 If you would like to add tags to the CloudFormation stack nows the time. We are not using any IAM roles for this or enabling monitoring/rollback functionality.
+
 Review Settings and select create
+
 Wait a few minutes for the Stack to finish creating the EC2 instance
 Because we used x-pack to secure the node there are some userdata commands that are run after cfn-init. So the Stack will come back in a ready state before we’ve finished applying the security settings and restarting the ElasticSearch Service. Just giver her a minute to do her thing.
+
 Navigate to the Outputs tab of the Stack you just create and copy the InstancePublicIP value.
+
 Open a new tab in your web browser and navigate to https://InstancePublicIP:9200
+
 Accept the certificate
+
 Log into ElasticSearch with:
+
 Username: admin
 Password: “Password Specified as a part of the CloudFormation Stack creation”
+
 Viola, ElasticSearch on an EC2 instance.
 
 Feedback
